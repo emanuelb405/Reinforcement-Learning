@@ -8,7 +8,7 @@ def build_feature_extractor(input_):
   # scale the inputs from 0..255 to 0..1
   input_ = tf.to_float(input_) / 255.0
 
-  # conv layers
+
   conv1 = tf.contrib.layers.conv2d(
     input_,
     16, # num output feature maps
@@ -39,7 +39,6 @@ class PolicyNetwork:
   def __init__(self, num_outputs, reg=0.01):
     self.num_outputs = num_outputs
 
-    # Graph inputs
     # After resizing we have 4 consecutive frames of size 84 x 84
     self.states = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="X")
     # Advantage = G - V(s)
@@ -47,51 +46,34 @@ class PolicyNetwork:
     # Selected actions
     self.actions = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
 
-    # Policy network is created before value network, because reuse is set to true
+    # policy network created before value network, reuse is set to true
     with tf.variable_scope("shared", reuse=False):
       fc1 = build_feature_extractor(self.states)
 
-    # Use a separate scope for output and loss
     with tf.variable_scope("policy_network"):
       self.logits = tf.contrib.layers.fully_connected(fc1, num_outputs, activation_fn=None)
       self.probs = tf.nn.softmax(self.logits)
-
-      # Sample an action
       cdist = tf.distributions.Categorical(logits=self.logits)
       self.sample_action = cdist.sample()
-
-      # Add regularization to increase exploration
       self.entropy = -tf.reduce_sum(self.probs * tf.log(self.probs), axis=1)
-
-      # Get the predictions for the chosen actions only
       batch_size = tf.shape(self.states)[0]
       gather_indices = tf.range(batch_size) * tf.shape(self.probs)[1] + self.actions
       self.selected_action_probs = tf.gather(tf.reshape(self.probs, [-1]), gather_indices)
-
       self.loss = tf.log(self.selected_action_probs) * self.advantage + reg * self.entropy
       self.loss = -tf.reduce_sum(self.loss, name="loss")
-
-      # training
       self.optimizer = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6)
-
-      # we'll need these later for running gradient descent steps
       self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
       self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
 
 
 class ValueNetwork:
   def __init__(self):
-    # Placeholders for input
-    #  4 consecutive frames of size 84 x 84
-    self.states = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="X")
-    # The TD target value
-    self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
 
-    # again policy network created before value network (because reuse=True)
+    self.states = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="X")
+    self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
     with tf.variable_scope("shared", reuse=True):
       fc1 = build_feature_extractor(self.states)
 
-    #  separate scope for output and loss
     with tf.variable_scope("value_network"):
       self.vhat = tf.contrib.layers.fully_connected(
         inputs=fc1,
@@ -102,15 +84,11 @@ class ValueNetwork:
       self.loss = tf.squared_difference(self.vhat, self.targets)
       self.loss = tf.reduce_sum(self.loss, name="loss")
 
-      # training
       self.optimizer = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6)
-
-      # we'll need these later for running gradient descent steps
       self.grads_and_vars = self.optimizer.compute_gradients(self.loss)
       self.grads_and_vars = [[grad, var] for grad, var in self.grads_and_vars if grad is not None]
 
 
-#create network
 def create_networks(num_outputs):
   policy_network = PolicyNetwork(num_outputs=num_outputs)
   value_network = ValueNetwork()

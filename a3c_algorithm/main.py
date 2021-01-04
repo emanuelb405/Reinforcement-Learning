@@ -21,7 +21,6 @@ STEPS_PER_UPDATE = 5
 def Env():
   return gym.envs.make(ENV_NAME)
 
-# Depending on the game we may have a limited action space
 if ENV_NAME == "Pong-v0" or ENV_NAME == "Breakout-v0":
   NUM_ACTIONS = 4 # env.action_space.n returns a bigger number
 else:
@@ -40,26 +39,18 @@ def smooth(x):
   return y
 
 
-# Set the number of workers
 NUM_WORKERS = multiprocessing.cpu_count()
 
 with tf.device("/cpu:0"):
-
-  # Keeps track of the number of updates we've performed
-  # https://www.tensorflow.org/api_docs/python/tf/train/global_step
   global_step = tf.Variable(0, name="global_step", trainable=False)
 
-  # Global policy and value nets
   with tf.variable_scope("global") as vs:
     policy_net, value_net = create_networks(NUM_ACTIONS)
 
-  # Global step iterator
   global_counter = itertools.count()
 
-  # Save returns
   returns_list = []
 
-  # Create workers
   workers = []
   for worker_id in range(NUM_WORKERS):
     worker = Worker(
@@ -77,7 +68,6 @@ with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   coord = tf.train.Coordinator()
 
-  # Start worker threads
   worker_threads = []
   for worker in workers:
     worker_fn = lambda: worker.run(sess, coord, STEPS_PER_UPDATE)
@@ -85,10 +75,8 @@ with tf.Session() as sess:
     t.start()
     worker_threads.append(t)
 
-  # Wait for all workers to finish
   coord.join(worker_threads, stop_grace_period_secs=300)
 
-  # Plot the smoothed returns
   x = np.array(returns_list)
   y = smooth(x)
   plt.plot(x, label='orig')
